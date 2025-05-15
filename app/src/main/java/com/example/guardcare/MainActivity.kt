@@ -6,6 +6,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.Spinner
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import java.text.SimpleDateFormat
 import java.util.*
@@ -19,7 +20,7 @@ class MainActivity : AppCompatActivity() {
         val dbHelper = DatabaseHelper(this)
         val dataManager = DataManager()
 
-        // Load all data from CSV files and insert the data into the database
+        // Load all data from CSV files and insert into database
         val allGrowthData = dataManager.loadAllData(this, dbHelper)
 
         // Find UI components
@@ -41,7 +42,7 @@ class MainActivity : AppCompatActivity() {
             sexSpinner.adapter = adapter
         }
 
-        // Set up click listener for the calculate button
+        // Set up click listener for calculate button
         calculateButton.setOnClickListener {
             try {
                 // Get user input
@@ -51,73 +52,78 @@ class MainActivity : AppCompatActivity() {
                 val height = heightEditText.text.toString().toDoubleOrNull() ?: 0.0
                 val weight = weightEditText.text.toString().toDoubleOrNull() ?: 0.0
 
+                // Validate input
                 if (name.isEmpty() || age == 0 || height == 0.0 || weight == 0.0) {
-                    statusTextView.text = "Please fill all fields correctly"
+                    Toast.makeText(this, "Please fill all fields correctly", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
 
-                // Insert the child's data into the database
+                // Insert child data
                 val childId = dbHelper.insertChildData(name, age, sex, height, weight)
 
                 if (childId == -1L) {
-                    statusTextView.text = "Error saving data"
+                    Toast.makeText(this, "Error saving data", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
 
-                // Calculate the nutritional status based on the parsed growth data
+                // Calculate nutritional status
                 val nutritionalStatus = calculateZScore(age, sex, height, weight, allGrowthData)
 
-                // Insert the nutritional status into the database
+                // Insert nutritional status
                 val currentDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
                 dbHelper.insertNutritionalStatus(childId.toInt(), nutritionalStatus, currentDate)
 
-                // Display the result
+                // Display result
                 statusTextView.text = "Nutritional Status: $nutritionalStatus"
+                Toast.makeText(this, "Data saved successfully", Toast.LENGTH_SHORT).show()
+
             } catch (e: Exception) {
-                statusTextView.text = "Error: ${e.message}"
+                Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    // Function to calculate Z-score and determine nutritional status
     private fun calculateZScore(age: Int, sex: String, height: Double, weight: Double, growthData: List<GrowthData>): String {
-        // Find the appropriate data for each metric using the correct metric
-        val heightGrowthData = growthData.find {
-            it.metric == "lhfa" &&
-                    it.ageGroup == "${age}-to-${age + 2}-years" &&
-                    it.sex == sex
+        // Find appropriate data for each metric
+        val heightData = growthData.find {
+            it.metric == "lhfa" && it.sex == sex && age in 0..5
         }
-        val weightGrowthData = growthData.find {
-            it.metric == "wfa" &&
-                    it.ageGroup == "${age}-to-${age + 2}-years" &&
-                    it.sex == sex
+        val weightData = growthData.find {
+            it.metric == "wfa" && it.sex == sex && age in 0..5
         }
-        val weightForLengthGrowthData = growthData.find {
-            it.metric == "wfl" &&
-                    it.ageGroup == "${age}-to-${age + 2}-years" &&
-                    it.sex == sex
+        val weightForHeightData = if (age <= 2) {
+            growthData.find {
+                it.metric == "wfl" && it.sex == sex
+            }
+        } else {
+            growthData.find {
+                it.metric == "wfh" && it.sex == sex
+            }
         }
 
-        // Calculate Z-scores for height, weight, and weight for length/height
-        val heightZScore = heightGrowthData?.let {
+        // Calculate Z-scores
+        val heightZScore = heightData?.let {
             (height - it.msv) / it.sdv
         } ?: 0.0
 
-        val weightZScore = weightGrowthData?.let {
+        val weightZScore = weightData?.let {
             (weight - it.msv) / it.sdv
         } ?: 0.0
 
-        val weightForLengthZScore = weightForLengthGrowthData?.let {
+        val weightForHeightZScore = weightForHeightData?.let {
             (weight - it.msv) / it.sdv
         } ?: 0.0
 
-        // Determine nutritional status based on the Z-scores
+        // Determine nutritional status
         return when {
-            weightZScore < -2 -> "Underweight"
-            weightZScore > 2 -> "Obese"
-            weightZScore in -2.0..1.0 -> "Normal"
-            heightZScore < -2 -> "Stunted"
-            weightForLengthZScore < -2 -> "WFL Underweight"
+            heightZScore < -3.0 -> "Severely Stunted"
+            heightZScore < -2.0 -> "Stunted"
+            weightZScore < -3.0 -> "Severely Underweight"
+            weightZScore < -2.0 -> "Underweight"
+            weightForHeightZScore < -3.0 -> "Severely Wasted"
+            weightForHeightZScore < -2.0 -> "Wasted"
+            weightZScore > 2.0 -> "Overweight"
+            weightZScore > 3.0 -> "Obese"
             else -> "Normal"
         }
     }
