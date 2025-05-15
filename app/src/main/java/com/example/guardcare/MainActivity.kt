@@ -1,6 +1,7 @@
 package com.example.guardcare
 
 import android.os.Bundle
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Spinner
@@ -15,7 +16,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        val dbHelper = DatabaseHelper(this)  // Initialize DatabaseHelper
+        val dbHelper = DatabaseHelper(this)
         val dataManager = DataManager()
 
         // Load all data from CSV files and insert the data into the database
@@ -30,32 +31,56 @@ class MainActivity : AppCompatActivity() {
         val calculateButton = findViewById<Button>(R.id.calculateButton)
         val statusTextView = findViewById<TextView>(R.id.statusTextView)
 
+        // Set up sex spinner
+        ArrayAdapter.createFromResource(
+            this,
+            R.array.sex_array,
+            android.R.layout.simple_spinner_item
+        ).also { adapter ->
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            sexSpinner.adapter = adapter
+        }
+
         // Set up click listener for the calculate button
         calculateButton.setOnClickListener {
-            // Get user input
-            val name = nameEditText.text.toString()
-            val age = ageEditText.text.toString().toInt()
-            val sex = sexSpinner.selectedItem.toString()
-            val height = heightEditText.text.toString().toDouble()
-            val weight = weightEditText.text.toString().toDouble()
+            try {
+                // Get user input
+                val name = nameEditText.text.toString()
+                val age = ageEditText.text.toString().toIntOrNull() ?: 0
+                val sex = sexSpinner.selectedItem.toString().lowercase()
+                val height = heightEditText.text.toString().toDoubleOrNull() ?: 0.0
+                val weight = weightEditText.text.toString().toDoubleOrNull() ?: 0.0
 
-            // Insert the child’s data into the database
-            val childId = dbHelper.insertChildData(name, age, sex, height, weight)
+                if (name.isEmpty() || age == 0 || height == 0.0 || weight == 0.0) {
+                    statusTextView.text = "Please fill all fields correctly"
+                    return@setOnClickListener
+                }
 
-            // Calculate the nutritional status based on the parsed growth data
-            val nutritionalStatus = calculateZScore(age, sex, height, weight, allGrowthData)
+                // Insert the child's data into the database
+                val childId = dbHelper.insertChildData(name, age, sex, height, weight)
 
-            // Insert the nutritional status into the database
-            val currentDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-            dbHelper.insertNutritionalStatus(childId.toInt(), nutritionalStatus, currentDate)
+                if (childId == -1L) {
+                    statusTextView.text = "Error saving data"
+                    return@setOnClickListener
+                }
 
-            // Display the result
-            statusTextView.text = "Nutritional Status: $nutritionalStatus"
+                // Calculate the nutritional status based on the parsed growth data
+                val nutritionalStatus = calculateZScore(age, sex, height, weight, allGrowthData)
+
+                // Insert the nutritional status into the database
+                val currentDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                dbHelper.insertNutritionalStatus(childId.toInt(), nutritionalStatus, currentDate)
+
+                // Display the result
+                statusTextView.text = "Nutritional Status: $nutritionalStatus"
+            } catch (e: Exception) {
+                statusTextView.text = "Error: ${e.message}"
+            }
         }
     }
 
     // Function to calculate Z-score and determine nutritional status
-    fun calculateZScore(age: Int, sex: String, height: Double, weight: Double, growthData: List<GrowthData>): String {
+    private fun calculateZScore(age: Int, sex: String, height: Double, weight: Double, growthData: List<GrowthData>): String {
         // Find the appropriate data for each metric using the correct metric
         val heightGrowthData = growthData.find {
             it.metric == "lhfa" &&
@@ -96,5 +121,4 @@ class MainActivity : AppCompatActivity() {
             else -> "Normal"
         }
     }
-
 }

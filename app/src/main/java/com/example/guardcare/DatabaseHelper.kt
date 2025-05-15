@@ -19,11 +19,24 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         private const val COLUMN_PHONE = "phone"
         private const val COLUMN_PASSWORD = "password"
 
+        // Child Table
+        private const val TABLE_CHILDREN = "children"
+        private const val COLUMN_NAME = "name"
+        private const val COLUMN_AGE = "age"
+        private const val COLUMN_SEX = "sex"
+        private const val COLUMN_HEIGHT = "height"
+        private const val COLUMN_WEIGHT = "weight"
+
+        // Nutritional Status Table
+        private const val TABLE_NUTRITIONAL_STATUS = "nutritional_status"
+        private const val COLUMN_CHILD_ID = "child_id"
+        private const val COLUMN_STATUS = "status"
+        private const val COLUMN_DATE = "date"
+
         // Growth Data Table
         private const val TABLE_GROWTH_DATA = "growth_data"
         private const val COLUMN_METRIC = "metric"
         private const val COLUMN_AGE_GROUP = "age_group"
-        private const val COLUMN_SEX = "sex"
         private const val COLUMN_Z_SCORES = "z_scores"
         private const val COLUMN_MSV = "msv"
         private const val COLUMN_SDV = "sdv"
@@ -38,6 +51,27 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
             $COLUMN_PASSWORD TEXT
         )"""
         db.execSQL(createUsersTable)
+
+        // Create Children Table
+        val createChildrenTable = """CREATE TABLE $TABLE_CHILDREN (
+            $COLUMN_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            $COLUMN_NAME TEXT,
+            $COLUMN_AGE INTEGER,
+            $COLUMN_SEX TEXT,
+            $COLUMN_HEIGHT REAL,
+            $COLUMN_WEIGHT REAL
+        )"""
+        db.execSQL(createChildrenTable)
+
+        // Create Nutritional Status Table
+        val createNutritionalStatusTable = """CREATE TABLE $TABLE_NUTRITIONAL_STATUS (
+            $COLUMN_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            $COLUMN_CHILD_ID INTEGER,
+            $COLUMN_STATUS TEXT,
+            $COLUMN_DATE TEXT,
+            FOREIGN KEY($COLUMN_CHILD_ID) REFERENCES $TABLE_CHILDREN($COLUMN_ID)
+        )"""
+        db.execSQL(createNutritionalStatusTable)
 
         // Create Growth Data Table
         val createGrowthDataTable = """CREATE TABLE $TABLE_GROWTH_DATA (
@@ -54,6 +88,8 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         db.execSQL("DROP TABLE IF EXISTS $TABLE_USERS")
+        db.execSQL("DROP TABLE IF EXISTS $TABLE_CHILDREN")
+        db.execSQL("DROP TABLE IF EXISTS $TABLE_NUTRITIONAL_STATUS")
         db.execSQL("DROP TABLE IF EXISTS $TABLE_GROWTH_DATA")
         onCreate(db)
     }
@@ -83,13 +119,49 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         val values = ContentValues().apply {
             put(COLUMN_EMAIL, email)
             put(COLUMN_PHONE, phone)
-            put(COLUMN_PASSWORD, password) // TODO: Use proper password hashing
+            put(COLUMN_PASSWORD, password)
         }
 
         return try {
             db.insertOrThrow(TABLE_USERS, null, values)
         } catch (e: Exception) {
             Log.e("DatabaseHelper", "Error inserting user", e)
+            -1L
+        }
+    }
+
+    // Insert child data
+    fun insertChildData(name: String, age: Int, sex: String, height: Double, weight: Double): Long {
+        val db = this.writableDatabase
+        val values = ContentValues().apply {
+            put(COLUMN_NAME, name)
+            put(COLUMN_AGE, age)
+            put(COLUMN_SEX, sex)
+            put(COLUMN_HEIGHT, height)
+            put(COLUMN_WEIGHT, weight)
+        }
+
+        return try {
+            db.insertOrThrow(TABLE_CHILDREN, null, values)
+        } catch (e: Exception) {
+            Log.e("DatabaseHelper", "Error inserting child data", e)
+            -1L
+        }
+    }
+
+    // Insert nutritional status
+    fun insertNutritionalStatus(childId: Int, status: String, date: String): Long {
+        val db = this.writableDatabase
+        val values = ContentValues().apply {
+            put(COLUMN_CHILD_ID, childId)
+            put(COLUMN_STATUS, status)
+            put(COLUMN_DATE, date)
+        }
+
+        return try {
+            db.insertOrThrow(TABLE_NUTRITIONAL_STATUS, null, values)
+        } catch (e: Exception) {
+            Log.e("DatabaseHelper", "Error inserting nutritional status", e)
             -1L
         }
     }
@@ -138,14 +210,13 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         return exists
     }
 
-    // Insert growth data (for your previous implementation)
+    // Insert growth data
     fun insertGrowthData(growthData: GrowthData): Long {
         val db = this.writableDatabase
         val values = ContentValues().apply {
             put(COLUMN_METRIC, growthData.metric)
             put(COLUMN_AGE_GROUP, growthData.ageGroup)
             put(COLUMN_SEX, growthData.sex)
-            // Convert Z-scores map to a string representation
             put(COLUMN_Z_SCORES, growthData.zScores.toString())
             put(COLUMN_MSV, growthData.msv)
             put(COLUMN_SDV, growthData.sdv)
